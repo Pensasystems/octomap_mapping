@@ -173,10 +173,13 @@ OctomapServer::OctomapServer(ros::NodeHandle private_nh_)
   m_mapPub = m_nh.advertise<nav_msgs::OccupancyGrid>("projected_map", 5, m_latchedTopics);
   m_fmarkerPub = m_nh.advertise<visualization_msgs::MarkerArray>("free_cells_vis_array", 1, m_latchedTopics);
 
+  m_pointDistSub = new message_filters::Subscriber<sensor_msgs::Range>(m_nh, "range_in", 8);
   m_pointCloudSub = new message_filters::Subscriber<sensor_msgs::PointCloud2> (m_nh, "cloud_in", 5);
   m_tfPointCloudSub = new tf::MessageFilter<sensor_msgs::PointCloud2> (*m_pointCloudSub, m_tfListener, m_worldFrameId, 5);
   m_tfPointCloudSub->registerCallback(boost::bind(&OctomapServer::insertCloudCallback, this, _1));
-
+  m_tfDistSub = new tf::MessageFilter<sensor_msgs::Range>(*m_pointDistSub, m_tfListener, m_worldFrameId, 5);
+  m_tfDistSub->registerCallback(boost::bind(&OctomapServer::insertRangeCallback, this, _1));
+  
   m_octomapBinaryService = m_nh.advertiseService("octomap_binary", &OctomapServer::octomapBinarySrv, this);
   m_octomapFullService = m_nh.advertiseService("octomap_full", &OctomapServer::octomapFullSrv, this);
   m_clearBBXService = private_nh.advertiseService("clear_bbx", &OctomapServer::clearBBXSrv, this);
@@ -352,6 +355,38 @@ void OctomapServer::insertCloudCallback(const sensor_msgs::PointCloud2::ConstPtr
 
   publishAll(cloud->header.stamp);
 }
+
+void OctomapServer::fibonacciSpherePoints(sensor_msgs::PointCloud2& points, float arcLength)
+{
+	float phi = (sqrt(5.)+1.)/2. - 1.;
+	float ga = phi*2.*M_PI;
+}
+
+
+// Transform a range, whether point distance or with some small FOV, to a point
+// cloud in the underlying world frame point cloud.
+//
+// ref: https://math.stackexchange.com/questions/56784/generate-a-random-direction-within-a-cone
+void OctomapServer::insertRangeCallback(cosnt sensor_msgs::Range::ConstPtr& ray)
+{
+	float fov = ray->field_of_view;
+	float arcLength = 2 * M_PI * ray->range * (fov / 360.);
+
+	// If the arc length of the FOV and range measurement is sufficiently large,
+	// interpolate single points along the formed arc.
+	if (arcLength > m_res)
+	{
+		float angleStep = fov / (arcLength / (m_res / 2.)));
+		for (flaot i=-fov/2.; i<=fov/2.; i+=angleStep)
+		{
+			// Form a point assuming 0 origin, then transform to world
+			
+		}
+	}
+}
+
+
+
 
 void OctomapServer::insertScan(const tf::Point& sensorOriginTf, const PCLPointCloud& ground, const PCLPointCloud& nonground){
   point3d sensorOrigin = pointTfToOctomap(sensorOriginTf);
