@@ -181,6 +181,7 @@ OctomapServer::OctomapServer(ros::NodeHandle private_nh_)
   m_octomapFullService = m_nh.advertiseService("octomap_full", &OctomapServer::octomapFullSrv, this);
   m_clearBBXService = private_nh.advertiseService("clear_bbx", &OctomapServer::clearBBXSrv, this);
   m_resetService = private_nh.advertiseService("reset", &OctomapServer::resetSrv, this);
+  m_castRayService = private_nh.advertiseService("cast_ray", &OctomapServer::castRaySrv, this);
 
   dynamic_reconfigure::Server<OctomapServerConfig>::CallbackType f;
   f = boost::bind(&OctomapServer::reconfigureCallback, this, _1, _2);
@@ -796,6 +797,20 @@ bool OctomapServer::resetSrv(std_srvs::Empty::Request& req, std_srvs::Empty::Res
   m_fmarkerPub.publish(freeNodesVis);
 
   return true;
+}
+
+bool OctomapServer::castRaySrv(CastRaySrv::Request& req, CastRaySrv::Response& rsp){
+
+	octomap::point3d origin(req.origin.x, req.origin.y, req.origin.z);
+	octomap::point3d direction(req.direction.x, req.direction.y, req.direction.z);
+	octomap::point3d end;
+	
+	rsp.occupied = m_octree->castRay(origin, direction, end, req.ignore_unknown_cells, req.max_range);
+	rsp.first_cell.x = end.x();
+	rsp.first_cell.y = end.y();
+	rsp.first_cell.z = end.z();
+	
+	return true;
 }
 
 void OctomapServer::publishBinaryOctoMap(const ros::Time& rostime) const{
