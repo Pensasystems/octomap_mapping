@@ -801,14 +801,16 @@ bool OctomapServer::resetSrv(std_srvs::Empty::Request& req, std_srvs::Empty::Res
 
 bool OctomapServer::castRaySrv(CastRaySrv::Request& req, CastRaySrv::Response& rsp){
 
-	octomap::point3d origin(req.origin.x, req.origin.y, req.origin.z);
+	octomap::point3d origin(req.origin.point.x, req.origin.point.y, req.origin.point.z);
 	octomap::point3d direction(req.direction.x, req.direction.y, req.direction.z);
 	octomap::point3d end;
 	
 	rsp.occupied = m_octree->castRay(origin, direction, end, req.ignore_unknown_cells, req.max_range);
-	rsp.first_cell.x = end.x();
-	rsp.first_cell.y = end.y();
-	rsp.first_cell.z = end.z();
+	rsp.first_cell.header = req.origin.header;
+	rsp.first_cell.header.frame_id = "octomap";
+	rsp.first_cell.point.x = end.x();
+	rsp.first_cell.point.y = end.y();
+	rsp.first_cell.point.z = end.z();
 	
 	return true;
 }
