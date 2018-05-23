@@ -43,6 +43,8 @@ OctomapServer::OctomapServer(ros::NodeHandle private_nh_)
 : m_nh(),
   m_pointCloudSub(NULL),
   m_tfPointCloudSub(NULL),
+  m_wholePointCloudSub(NULL),
+  m_tfWholePointCloudSub(NULL),
   m_reconfigureServer(m_config_mutex),
   m_octree(NULL),
   m_maxRange(-1.0),
@@ -173,10 +175,14 @@ OctomapServer::OctomapServer(ros::NodeHandle private_nh_)
   m_mapPub = m_nh.advertise<nav_msgs::OccupancyGrid>("projected_map", 5, m_latchedTopics);
   m_fmarkerPub = m_nh.advertise<visualization_msgs::MarkerArray>("free_cells_vis_array", 1, m_latchedTopics);
 
-  m_pointCloudSub = new message_filters::Subscriber<sensor_msgs::PointCloud2> (m_nh, "cloud_in", 5);
+  m_pointCloudSub = new message_filters::Subscriber<sensor_msgs::PointCloud2>(m_nh, "cloud_in", 5);
   m_tfPointCloudSub = new tf::MessageFilter<sensor_msgs::PointCloud2> (*m_pointCloudSub, m_tfListener, m_worldFrameId, 5);
   m_tfPointCloudSub->registerCallback(boost::bind(&OctomapServer::insertCloudCallback, this, _1));
 
+  m_wholePointCloudSub = new message_filters::Subscriber<sensor_msgs::PointCloud2>(m_nh, "whole_cloud_in", 5);
+  m_tfWholePointCloudSub = new tf::MessageFilter<sensor_msgs::PointCloud2>(*m_wholePointCloudSub, m_tfListener, m_worldFrameId, 5);
+  m_tfWholePointCloudSub->registerCallback(boost::bind(&OctomapServer::insertWholeCloudCallback, this, _1));
+  
   m_octomapBinaryService = m_nh.advertiseService("octomap_binary", &OctomapServer::octomapBinarySrv, this);
   m_octomapFullService = m_nh.advertiseService("octomap_full", &OctomapServer::octomapFullSrv, this);
   m_clearBBXService = private_nh.advertiseService("clear_bbx", &OctomapServer::clearBBXSrv, this);
@@ -257,6 +263,101 @@ bool OctomapServer::openFile(const std::string& filename){
 
   return true;
 
+}
+
+void OctomapServer::insertWholeCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud){
+
+	PCLPointCloud pc; // input cloud for filtering and ground-detection
+	pcl::fromROSMsg(*cloud, pc);
+	
+	tf::StampedTransform sensorToWorldTf;
+	try {
+		m_tfListener.lookupTransform(m_worldFrameId, cloud->header.frame_id, cloud->header.stamp, sensorToWorldTf);
+	} catch(tf::TransformException& ex){
+		ROS_ERROR_STREAM( "Transform error of sensor data: " << ex.what() << ", quitting callback");
+		return;
+	}
+	
+	Eigen::Matrix4f sensorToWorld;
+	pcl_ros::transformAsMatrix(sensorToWorldTf, sensorToWorld);
+
+	// set up filter for height range, also removes NANs:
+	pcl::PassThrough<PCLPoint> pass_x;
+	pass_x.setFilterFieldName("x");
+	pass_x.setFilterLimits(m_pointcloudMinX, m_pointcloudMaxX);
+	pcl::PassThrough<PCLPoint> pass_y;
+	pass_y.setFilterFieldName("y");
+	pass_y.setFilterLimits(m_pointcloudMinY, m_pointcloudMaxY);
+	pcl::PassThrough<PCLPoint> pass_z;
+	pass_z.setFilterFieldName("z");
+	pass_z.setFilterLimits(m_pointcloudMinZ, m_pointcloudMaxZ);
+
+	PCLPointCloud pc_ground; // segmented ground plane
+	
+    // directly transform to map frame:
+    pcl::transformPointCloud(pc, pc, sensorToWorld);
+
+    // just filter height range:
+    pass_x.setInputCloud(pc.makeShared());
+    pass_x.filter(pc);
+    pass_y.setInputCloud(pc.makeShared());
+    pass_y.filter(pc);
+    pass_z.setInputCloud(pc.makeShared());
+    pass_z.filter(pc);
+
+	insertCloud(sensorToWorldTf.getOrigin(), pc);	
+	publishAll(cloud->header.stamp);	
+}
+
+void OctomapServer::insertCloud(const tf::Point& sensorOriginTf, const PCLPointCloud& pc){
+
+	point3d sensorOrigin = pointTfToOctomap(sensorOriginTf);
+
+	if (!m_octree->coordToKeyChecked(sensorOrigin, m_updateBBXMin)
+		|| !m_octree->coordToKeyChecked(sensorOrigin, m_updateBBXMax))
+	{
+		ROS_ERROR_STREAM("Could not generate Key for origin "<<sensorOrigin);
+	}
+
+#ifdef COLOR_OCTOMAP_SERVER
+  unsigned char* colors = new unsigned char[3];
+#endif
+	
+	KeySet occupied_cells;	
+	for (PCLPointCloud::const_iterator it = pc.begin(); it != pc.end(); ++it){
+		point3d point(it->x, it->y, it->z);	
+		OcTreeKey key;
+		if (m_octree->coordToKeyChecked(point, key)){
+			occupied_cells.insert(key);
+		
+			updateMinKey(key, m_updateBBXMin);
+			updateMaxKey(key, m_updateBBXMax);
+		
+#ifdef COLOR_OCTOMAP_SERVER // NB: Only read and interpret color if it's an occupied node
+			const int rgb = *reinterpret_cast<const int*>(&(it->rgb)); // TODO: there are other ways to encode color than this one
+			colors[0] = ((rgb >> 16) & 0xff);
+			colors[1] = ((rgb >> 8) & 0xff);
+			colors[2] = (rgb & 0xff);
+			m_octree->averageNodeColor(it->x, it->y, it->z, colors[0], colors[1], colors[2]);
+#endif
+		}
+	}
+
+
+	// now mark all occupied cells:
+	for (KeySet::iterator it = occupied_cells.begin(), end=occupied_cells.end(); it!= end; it++) {
+		m_octree->updateNode(*it, true);
+	}
+	
+	if (m_compressMap) m_octree->prune();
+
+#ifdef COLOR_OCTOMAP_SERVER
+	if (colors)
+	{
+		delete[] colors;
+		colors = NULL;
+	}
+#endif	
 }
 
 void OctomapServer::insertCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud){
