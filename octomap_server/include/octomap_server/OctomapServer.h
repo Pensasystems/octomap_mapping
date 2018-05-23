@@ -57,10 +57,12 @@
 #include <tf/transform_listener.h>
 #include <tf/message_filter.h>
 #include <message_filters/subscriber.h>
+#include <octomap_msgs/CastRay.h>
 #include <octomap_msgs/Octomap.h>
 #include <octomap_msgs/GetOctomap.h>
 #include <octomap_msgs/BoundingBoxQuery.h>
 #include <octomap_msgs/conversions.h>
+#include <octomap_msgs/SearchNode.h>
 
 #include <octomap_ros/conversions.h>
 #include <octomap/octomap.h>
@@ -87,14 +89,18 @@ public:
 #endif
   typedef octomap_msgs::GetOctomap OctomapSrv;
   typedef octomap_msgs::BoundingBoxQuery BBXSrv;
-
+  typedef octomap_msgs::CastRay CastRaySrv;
+  typedef octomap_msgs::SearchNode SearchNodeSrv;
+  
   OctomapServer(ros::NodeHandle private_nh_ = ros::NodeHandle("~"));
   virtual ~OctomapServer();
   virtual bool octomapBinarySrv(OctomapSrv::Request  &req, OctomapSrv::GetOctomap::Response &res);
   virtual bool octomapFullSrv(OctomapSrv::Request  &req, OctomapSrv::GetOctomap::Response &res);
   bool clearBBXSrv(BBXSrv::Request& req, BBXSrv::Response& resp);
   bool resetSrv(std_srvs::Empty::Request& req, std_srvs::Empty::Response& resp);
-
+  bool castRaySrv(CastRaySrv::Request& req, CastRaySrv::Response& rsp);
+  bool searchNodeSrv(SearchNodeSrv::Request& req, SearchNodeSrv::Response& rsp);
+  
   virtual void insertCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud);
   virtual void insertWholeCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud);
   virtual bool openFile(const std::string& filename);
@@ -202,9 +208,11 @@ protected:
   static std_msgs::ColorRGBA heightMapColor(double h);
   ros::NodeHandle m_nh;
   ros::Publisher  m_markerPub, m_binaryMapPub, m_fullMapPub, m_pointCloudPub, m_collisionObjectPub, m_mapPub, m_cmapPub, m_fmapPub, m_fmarkerPub;
-  message_filters::Subscriber<sensor_msgs::PointCloud2>* m_pointCloudSub, *m_wholePointCloudSub;
-  tf::MessageFilter<sensor_msgs::PointCloud2>* m_tfPointCloudSub, *m_tfWholePointCloudSub;
-  ros::ServiceServer m_octomapBinaryService, m_octomapFullService, m_clearBBXService, m_resetService;
+
+  message_filters::Subscriber<sensor_msgs::PointCloud2> *m_pointCloudSub, *m_wholePointCloudSub;
+  tf::MessageFilter<sensor_msgs::PointCloud2> *m_tfPointCloudSub, *m_tfWholePointCloudSub;
+  ros::ServiceServer m_octomapBinaryService, m_octomapFullService, m_clearBBXService, m_resetService, m_castRayService, m_searchNodeService;
+
   tf::TransformListener m_tfListener;
   boost::recursive_mutex m_config_mutex;
   dynamic_reconfigure::Server<OctomapServerConfig> m_reconfigureServer;

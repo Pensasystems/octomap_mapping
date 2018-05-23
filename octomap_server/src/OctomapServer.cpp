@@ -187,7 +187,9 @@ OctomapServer::OctomapServer(ros::NodeHandle private_nh_)
   m_octomapFullService = m_nh.advertiseService("octomap_full", &OctomapServer::octomapFullSrv, this);
   m_clearBBXService = private_nh.advertiseService("clear_bbx", &OctomapServer::clearBBXSrv, this);
   m_resetService = private_nh.advertiseService("reset", &OctomapServer::resetSrv, this);
-
+  m_castRayService = private_nh.advertiseService("cast_ray", &OctomapServer::castRaySrv, this);
+  m_searchNodeService = private_nh.advertiseService("search_node", &OctomapServer::searchNodeSrv, this);
+  
   dynamic_reconfigure::Server<OctomapServerConfig>::CallbackType f;
   f = boost::bind(&OctomapServer::reconfigureCallback, this, _1, _2);
   m_reconfigureServer.setCallback(f);
@@ -899,6 +901,32 @@ bool OctomapServer::resetSrv(std_srvs::Empty::Request& req, std_srvs::Empty::Res
   return true;
 }
 
+bool OctomapServer::castRaySrv(CastRaySrv::Request& req, CastRaySrv::Response& rsp){
+
+	octomap::point3d origin(req.origin.point.x, req.origin.point.y, req.origin.point.z);
+	octomap::point3d direction(req.direction.x, req.direction.y, req.direction.z);
+	octomap::point3d end;
+	
+	rsp.occupied = m_octree->castRay(origin, direction, end, req.ignore_unknown_cells, req.max_range);
+	rsp.first_cell.header = req.origin.header;
+	rsp.first_cell.header.frame_id = "octomap";
+	rsp.first_cell.point.x = end.x();
+	rsp.first_cell.point.y = end.y();
+	rsp.first_cell.point.z = end.z();
+	
+	return true;
+}
+
+bool OctomapServer::searchNodeSrv(SearchNodeSrv::Request& req, SearchNodeSrv::Response& rsp){
+
+	OcTreeNode* node = m_octree->search(req.x, req.y, req.z);
+
+	if (node == NULL) rsp.occupied = 2; // unknown
+	else rsp.occupied = m_octree->isNodeOccupied(node) ? 0 : 1; // 0 - occupied, 1 - not occupied
+	
+	return true;
+}
+	
 void OctomapServer::publishBinaryOctoMap(const ros::Time& rostime) const{
 
   Octomap map;
