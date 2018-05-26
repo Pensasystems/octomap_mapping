@@ -39,6 +39,7 @@
 // #include <moveit_msgs/CollisionMap.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <std_srvs/Empty.h>
+#include <std_srvs/Trigger.h>
 #include <dynamic_reconfigure/server.h>
 #include <octomap_server/OctomapServerConfig.h>
 
@@ -100,6 +101,8 @@ public:
   bool resetSrv(std_srvs::Empty::Request& req, std_srvs::Empty::Response& resp);
   bool castRaySrv(CastRaySrv::Request& req, CastRaySrv::Response& rsp);
   bool searchNodeSrv(SearchNodeSrv::Request& req, SearchNodeSrv::Response& rsp);
+  bool dilateMapSrv(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& rsp);
+  
   
   virtual void insertCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud);
   virtual void insertWholeCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud);
@@ -211,7 +214,8 @@ protected:
 
   message_filters::Subscriber<sensor_msgs::PointCloud2> *m_pointCloudSub, *m_wholePointCloudSub;
   tf::MessageFilter<sensor_msgs::PointCloud2> *m_tfPointCloudSub, *m_tfWholePointCloudSub;
-  ros::ServiceServer m_octomapBinaryService, m_octomapFullService, m_clearBBXService, m_resetService, m_castRayService, m_searchNodeService;
+  ros::ServiceServer m_octomapBinaryService, m_octomapFullService, m_clearBBXService, m_resetService; 
+  ros::ServiceServer m_castRayService, m_searchNodeService, m_dilateMapService;
 
   tf::TransformListener m_tfListener;
   boost::recursive_mutex m_config_mutex;

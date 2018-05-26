@@ -189,6 +189,7 @@ OctomapServer::OctomapServer(ros::NodeHandle private_nh_)
   m_resetService = private_nh.advertiseService("reset", &OctomapServer::resetSrv, this);
   m_castRayService = private_nh.advertiseService("cast_ray", &OctomapServer::castRaySrv, this);
   m_searchNodeService = private_nh.advertiseService("search_node", &OctomapServer::searchNodeSrv, this);
+  m_dilateMapService = private_nh.advertiseService("dilate_map", &OctomapServer::dilateMapSrv, this);
   
   dynamic_reconfigure::Server<OctomapServerConfig>::CallbackType f;
   f = boost::bind(&OctomapServer::reconfigureCallback, this, _1, _2);
@@ -924,6 +925,75 @@ bool OctomapServer::searchNodeSrv(SearchNodeSrv::Request& req, SearchNodeSrv::Re
 	if (node == NULL) rsp.occupied = 2; // unknown
 	else rsp.occupied = m_octree->isNodeOccupied(node) ? 0 : 1; // 0 - occupied, 1 - not occupied
 	
+	return true;
+}
+
+// Each triggered dilation will dilate the map by one layer of voxels
+// Note: using coords in conjuntion with the lowest grid resolution works much
+// better than using "adjacent" keys.
+bool OctomapServer::dilateMapSrv(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& rsp){
+
+	// Need to only add voxels at the deepest level of the tree (smallest res).
+	// There might be a more dynamic and efficient way to accomplish this, but
+	// we do it by epxanding the entire tree to max depth so that all nodes
+	// within current bounds exist at the smallest resolution.
+	ROS_INFO_STREAM("num nodes before expand: " << m_octree->calcNumNodes());	
+	m_octree->expand();
+	ROS_INFO_STREAM("num nodes after expand: " << m_octree->calcNumNodes());	
+
+	double gridRes = m_octree->getNodeSize(m_maxTreeDepth);	
+	octomap::KeySet keySet;
+	std::vector<octomap::point3d> pts;
+//	for (auto& leaf : *m_octree)
+	for (OcTreeT::iterator it = m_octree->begin(); it != m_octree->end(); ++it)
+	{
+		octomap::point3d coord = m_octree->keyToCoord(it.getKey());
+		// Skip if not an [occupied] node
+		OcTreeNode* node = m_octree->search(it.getKey());
+		if (node == NULL || !m_octree->isNodeOccupied(node)) continue;
+
+		for (int i=-1; i<2; ++i)
+		{
+			for (int j=-1; j<2; ++j)
+			{
+				for (int m=-1; m<2; ++m)
+				{
+					octomap::point3d c(coord.x() + (float(i) * gridRes),
+									   coord.y() + (float(j) * gridRes),
+									   coord.z() + (float(m) * gridRes));
+					pts.push_back(c);
+					
+//					OcTreeKey key = it.getKey();
+//					key[0] += i;
+//					key[1] += j;
+//					key[2] += m;
+
+//					keySet.insert(key);
+				}
+			}
+		}
+	}
+
+	for (octomap::point3d& p : pts) m_octree->updateNode(p, true);
+
+//	ROS_INFO_STREAM("key set size: " << keySet.size());
+
+//	for (auto& k : keySet) m_octree->updateNode(k, true);
+
+        // This is weird. Convert our manually-calculated key to a coord in order to check that
+		// the coord to key conversion exists within the bounds of the map. If it does, then
+		// update the node represented by that key.
+//		if (m_octree->coordToKeyChecked(m_octree->keyToCoord(k), kk))
+//		{
+
+//		}
+	
+
+	// Prune the tree back up
+	m_octree->prune();
+
+	publishAll();
+	rsp.success = true;
 	return true;
 }
 	
