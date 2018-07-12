@@ -63,6 +63,8 @@ OctomapServer::OctomapServer(ros::NodeHandle private_nh_)
   m_pointcloudMaxY(std::numeric_limits<double>::max()),
   m_pointcloudMinZ(-std::numeric_limits<double>::max()),
   m_pointcloudMaxZ(std::numeric_limits<double>::max()),
+  m_projectionMinZ(-std::numeric_limits<double>::max()),
+  m_projectionMaxZ(std::numeric_limits<double>::max()),  
   m_occupancyMinZ(-std::numeric_limits<double>::max()),
   m_occupancyMaxZ(std::numeric_limits<double>::max()),
   m_minSizeX(0.0), m_minSizeY(0.0),
@@ -87,6 +89,8 @@ OctomapServer::OctomapServer(ros::NodeHandle private_nh_)
   private_nh.param("pointcloud_max_y", m_pointcloudMaxY,m_pointcloudMaxY);
   private_nh.param("pointcloud_min_z", m_pointcloudMinZ,m_pointcloudMinZ);
   private_nh.param("pointcloud_max_z", m_pointcloudMaxZ,m_pointcloudMaxZ);
+  private_nh.param("projection_min_z", m_projectionMinZ,m_projectionMinZ);
+  private_nh.param("projection_max_z", m_projectionMaxZ,m_projectionMaxZ);  
   private_nh.param("occupancy_min_z", m_occupancyMinZ,m_occupancyMinZ);
   private_nh.param("occupancy_max_z", m_occupancyMaxZ,m_occupancyMaxZ);
   private_nh.param("min_x_size", m_minSizeX,m_minSizeX);
@@ -314,6 +318,7 @@ void OctomapServer::insertWholeCloudCallback(const sensor_msgs::PointCloud2::Con
 
 void OctomapServer::insertCloud(const tf::Point& sensorOriginTf, const PCLPointCloud& pc){
 
+	ROS_INFO_STREAM("Received cloud");
 	point3d sensorOrigin = pointTfToOctomap(sensorOriginTf);
 
 	if (!m_octree->coordToKeyChecked(sensorOrigin, m_updateBBXMin)
@@ -1212,7 +1217,7 @@ void OctomapServer::handlePreNodeTraversal(const ros::Time& rostime){
           ROS_DEBUG("2D grid map size changed to %dx%d", m_gridmap.info.width, m_gridmap.info.height);
           adjustMapData(m_gridmap, oldMapInfo);
        }
-       nav_msgs::OccupancyGrid::_data_type::iterator startIt;
+
        size_t mapUpdateBBXMinX = std::max(0, (int(m_updateBBXMin[0]) - int(m_paddedMinKey[0]))/int(m_multires2DScale));
        size_t mapUpdateBBXMinY = std::max(0, (int(m_updateBBXMin[1]) - int(m_paddedMinKey[1]))/int(m_multires2DScale));
        size_t mapUpdateBBXMaxX = std::min(int(m_gridmap.info.width-1), (int(m_updateBBXMax[0]) - int(m_paddedMinKey[0]))/int(m_multires2DScale));
@@ -1236,8 +1241,6 @@ void OctomapServer::handlePreNodeTraversal(const ros::Time& rostime){
 
     }
 
-
-
   }
 
 }
@@ -1250,30 +1253,34 @@ void OctomapServer::handlePostNodeTraversal(const ros::Time& rostime){
 
 void OctomapServer::handleOccupiedNode(const OcTreeT::iterator& it){
 
-  if (m_publish2DMap && m_projectCompleteMap){
-    update2DMap(it, true);
-  }
+	if (m_publish2DMap && m_projectCompleteMap &&
+		it.getZ() > m_projectionMinZ && it.getZ() < m_projectionMaxZ){
+		update2DMap(it, true);
+	}
 }
 
 void OctomapServer::handleFreeNode(const OcTreeT::iterator& it){
 
-  if (m_publish2DMap && m_projectCompleteMap){
-    update2DMap(it, false);
-  }
+	if (m_publish2DMap && m_projectCompleteMap &&
+		it.getZ() > m_projectionMinZ && it.getZ() < m_projectionMaxZ){		
+		update2DMap(it, false);
+	}
 }
 
 void OctomapServer::handleOccupiedNodeInBBX(const OcTreeT::iterator& it){
 
-  if (m_publish2DMap && !m_projectCompleteMap){
-    update2DMap(it, true);
-  }
+	if (m_publish2DMap && !m_projectCompleteMap &&
+		it.getZ() > m_projectionMinZ && it.getZ() < m_projectionMaxZ){		
+		update2DMap(it, true);
+	}
 }
 
 void OctomapServer::handleFreeNodeInBBX(const OcTreeT::iterator& it){
 
-  if (m_publish2DMap && !m_projectCompleteMap){
-    update2DMap(it, false);
-  }
+	if (m_publish2DMap && !m_projectCompleteMap &&
+		it.getZ() > m_projectionMinZ && it.getZ() < m_projectionMaxZ){		
+		update2DMap(it, false);
+	}
 }
 
 void OctomapServer::update2DMap(const OcTreeT::iterator& it, bool occupied){
@@ -1304,9 +1311,7 @@ void OctomapServer::update2DMap(const OcTreeT::iterator& it, bool occupied){
     }
   }
 
-
 }
-
 
 
 bool OctomapServer::isSpeckleNode(const OcTreeKey&nKey) const {
