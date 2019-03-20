@@ -61,6 +61,7 @@
 #include <octomap_msgs/CastRay.h>
 #include <octomap_msgs/Octomap.h>
 #include <octomap_msgs/GetOctomap.h>
+#include <octomap_msgs/GetDilatedMap.h>
 #include <octomap_msgs/BoundingBoxQuery.h>
 #include <octomap_msgs/conversions.h>
 #include <octomap_msgs/SearchNode.h>
@@ -98,11 +99,12 @@ public:
   virtual bool octomapBinarySrv(OctomapSrv::Request  &req, OctomapSrv::GetOctomap::Response &res);
   virtual bool octomapFullSrv(OctomapSrv::Request  &req, OctomapSrv::GetOctomap::Response &res);
   bool clearBBXSrv(BBXSrv::Request& req, BBXSrv::Response& resp);
+  void dilateMap(OcTreeT* const map);
   bool resetSrv(std_srvs::Empty::Request& req, std_srvs::Empty::Response& resp);
   bool castRaySrv(CastRaySrv::Request& req, CastRaySrv::Response& rsp);
   bool searchNodeSrv(SearchNodeSrv::Request& req, SearchNodeSrv::Response& rsp);
   bool dilateMapSrv(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& rsp);
-  
+  bool getDilatedMapSrv(octomap_msgs::GetDilatedMap::Request& req, octomap_msgs::GetDilatedMap::Response& rsp);  
   
   virtual void insertCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud);
   virtual void insertWholeCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud);
@@ -215,7 +217,7 @@ protected:
   message_filters::Subscriber<sensor_msgs::PointCloud2> *m_pointCloudSub, *m_wholePointCloudSub;
   tf::MessageFilter<sensor_msgs::PointCloud2> *m_tfPointCloudSub, *m_tfWholePointCloudSub;
   ros::ServiceServer m_octomapBinaryService, m_octomapFullService, m_clearBBXService, m_resetService; 
-  ros::ServiceServer m_castRayService, m_searchNodeService, m_dilateMapService;
+	ros::ServiceServer m_castRayService, m_searchNodeService, m_dilateMapService, m_getDilatedMapService;
 
   tf::TransformListener m_tfListener;
   boost::recursive_mutex m_config_mutex;

@@ -194,6 +194,7 @@ OctomapServer::OctomapServer(ros::NodeHandle private_nh_)
   m_castRayService = private_nh.advertiseService("cast_ray", &OctomapServer::castRaySrv, this);
   m_searchNodeService = private_nh.advertiseService("search_node", &OctomapServer::searchNodeSrv, this);
   m_dilateMapService = private_nh.advertiseService("dilate_map", &OctomapServer::dilateMapSrv, this);
+  m_getDilatedMapService = private_nh.advertiseService("get_dilated_map", &OctomapServer::getDilatedMapSrv, this);
   
   dynamic_reconfigure::Server<OctomapServerConfig>::CallbackType f;
   f = boost::bind(&OctomapServer::reconfigureCallback, this, _1, _2);
@@ -933,29 +934,25 @@ bool OctomapServer::searchNodeSrv(SearchNodeSrv::Request& req, SearchNodeSrv::Re
 	return true;
 }
 
-// Each triggered dilation will dilate the map by one layer of voxels
-// Note: using coords in conjuntion with the lowest grid resolution works much
-// better than using "adjacent" keys.
-bool OctomapServer::dilateMapSrv(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& rsp){
-
+void OctomapServer::dilateMap(OcTreeT* const map){
 	// Need to only add voxels at the deepest level of the tree (smallest res).
 	// There might be a more dynamic and efficient way to accomplish this, but
 	// we do it by epxanding the entire tree to max depth so that all nodes
 	// within current bounds exist at the smallest resolution.
-	ROS_INFO_STREAM("num nodes before expand: " << m_octree->calcNumNodes());	
-	m_octree->expand();
-	ROS_INFO_STREAM("num nodes after expand: " << m_octree->calcNumNodes());	
+	//ROS_INFO_STREAM("num nodes before expand: " << m_octree->calcNumNodes());	
+	map->expand();
+	//ROS_INFO_STREAM("num nodes after expand: " << m_octree->calcNumNodes());	
 
-	double gridRes = m_octree->getNodeSize(m_maxTreeDepth);	
+	double gridRes = map->getNodeSize(m_maxTreeDepth);	
 	octomap::KeySet keySet;
 	std::vector<octomap::point3d> pts;
 //	for (auto& leaf : *m_octree)
-	for (OcTreeT::iterator it = m_octree->begin(); it != m_octree->end(); ++it)
+	for (OcTreeT::iterator it = map->begin(); it != map->end(); ++it)
 	{
-		octomap::point3d coord = m_octree->keyToCoord(it.getKey());
+		octomap::point3d coord = map->keyToCoord(it.getKey());
 		// Skip if not an [occupied] node
-		OcTreeNode* node = m_octree->search(it.getKey());
-		if (node == NULL || !m_octree->isNodeOccupied(node)) continue;
+		OcTreeNode* node = map->search(it.getKey());
+		if (node == NULL || !map->isNodeOccupied(node)) continue;
 
 		for (int i=-1; i<2; ++i)
 		{
@@ -967,36 +964,46 @@ bool OctomapServer::dilateMapSrv(std_srvs::Trigger::Request& req, std_srvs::Trig
 									   coord.y() + (float(j) * gridRes),
 									   coord.z() + (float(m) * gridRes));
 					pts.push_back(c);
-					
-//					OcTreeKey key = it.getKey();
-//					key[0] += i;
-//					key[1] += j;
-//					key[2] += m;
-
-//					keySet.insert(key);
 				}
 			}
 		}
 	}
 
-	for (octomap::point3d& p : pts) m_octree->updateNode(p, true);
-
-//	ROS_INFO_STREAM("key set size: " << keySet.size());
-
-//	for (auto& k : keySet) m_octree->updateNode(k, true);
-
-        // This is weird. Convert our manually-calculated key to a coord in order to check that
-		// the coord to key conversion exists within the bounds of the map. If it does, then
-		// update the node represented by that key.
-//		if (m_octree->coordToKeyChecked(m_octree->keyToCoord(k), kk))
-//		{
-
-//		}
-	
+	for (octomap::point3d& p : pts) map->updateNode(p, true);
 
 	// Prune the tree back up
-	m_octree->prune();
+	map->prune();	
+}
 
+bool OctomapServer::getDilatedMapSrv(octomap_msgs::GetDilatedMap::Request& req,
+									 octomap_msgs::GetDilatedMap::Response& rsp){
+	// Deep copy
+	OcTreeT* map = new OcTreeT(*m_octree);
+	
+	// Determine number of times to dilate
+	int multiple = ceil(req.dilation_amt / map->getNodeSize(m_maxTreeDepth));
+	while (multiple-- > 0) dilateMap(map);
+
+	rsp.map.header.frame_id = m_worldFrameId;
+	rsp.map.header.stamp = ros::Time::now();
+
+	if (!octomap_msgs::binaryMapToMsg(*map, rsp.map))
+	{
+		ROS_ERROR("Error serializing OctoMap");
+		delete map;
+		return false;
+	}
+
+	delete map;
+	return true;
+}
+
+// Each triggered dilation will dilate the map by one layer of voxels
+// Note: using coords in conjuntion with the lowest grid resolution works much
+// better than using "adjacent" keys.
+bool OctomapServer::dilateMapSrv(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& rsp){
+
+	dilateMap(m_octree);
 	publishAll();
 	rsp.success = true;
 	return true;
