@@ -53,7 +53,7 @@ public:
     GetOctomap::Request req;
     GetOctomap::Response resp;
 
-    while(n.ok() && !ros::service::call("/octomap/" + servname, req, resp))
+    while(n.ok() && !ros::service::call(servname, req, resp))
     {
       ROS_WARN("Request to %s failed; trying again...", n.resolveName(servname).c_str());
       usleep(1000000);
