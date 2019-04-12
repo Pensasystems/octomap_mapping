@@ -319,7 +319,6 @@ void OctomapServer::insertWholeCloudCallback(const sensor_msgs::PointCloud2::Con
 
 void OctomapServer::insertCloud(const tf::Point& sensorOriginTf, const PCLPointCloud& pc){
 
-	ROS_INFO_STREAM("Received cloud");
 	point3d sensorOrigin = pointTfToOctomap(sensorOriginTf);
 
 	if (!m_octree->coordToKeyChecked(sensorOrigin, m_updateBBXMin)
