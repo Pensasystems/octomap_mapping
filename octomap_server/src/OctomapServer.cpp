@@ -179,6 +179,10 @@ OctomapServer::OctomapServer(ros::NodeHandle private_nh_)
   m_mapPub = m_nh.advertise<nav_msgs::OccupancyGrid>("projected_map", 5, m_latchedTopics);
   m_fmarkerPub = m_nh.advertise<visualization_msgs::MarkerArray>("free_cells_vis_array", 1, m_latchedTopics);
 
+  m_extendMapSub = new message_filters::Subscriber<sensor_msgs::PointCloud2>(m_nh, "extend_map", 5);
+  m_tfExtendMapSub = new tf::MessageFilter<sensor_msgs::PointCloud2>(*m_extendMapSub, m_tfListener, m_worldFrameId, 5);
+  m_tfExtendMapSub->registerCallback(boost::bind(&OctomapServer::extendMapCallback, this, _1));
+  
   m_pointCloudSub = new message_filters::Subscriber<sensor_msgs::PointCloud2>(m_nh, "cloud_in", 5);
   m_tfPointCloudSub = new tf::MessageFilter<sensor_msgs::PointCloud2> (*m_pointCloudSub, m_tfListener, m_worldFrameId, 5);
   m_tfPointCloudSub->registerCallback(boost::bind(&OctomapServer::insertCloudCallback, this, _1));
@@ -273,6 +277,29 @@ bool OctomapServer::openFile(const std::string& filename){
 
 }
 
+void OctomapServer::extendMapCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud){
+
+	PCLPointCloud pc; // input cloud for filtering and ground-detection
+	pcl::fromROSMsg(*cloud, pc);
+	
+	tf::StampedTransform sensorToWorldTf;
+	try {
+		m_tfListener.lookupTransform(m_worldFrameId, cloud->header.frame_id, cloud->header.stamp, sensorToWorldTf);
+	} catch(tf::TransformException& ex){
+		ROS_ERROR_STREAM( "Transform error of sensor data: " << ex.what() << ", quitting callback");
+		return;
+	}
+	
+	Eigen::Matrix4f sensorToWorld;
+	pcl_ros::transformAsMatrix(sensorToWorldTf, sensorToWorld);
+	
+    // directly transform to map frame:
+    pcl::transformPointCloud(pc, pc, sensorToWorld);
+
+	insertCloud(sensorToWorldTf.getOrigin(), pc, false);	
+	publishAll(cloud->header.stamp);	
+}
+
 void OctomapServer::insertWholeCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud){
 
 	PCLPointCloud pc; // input cloud for filtering and ground-detection
@@ -317,7 +344,7 @@ void OctomapServer::insertWholeCloudCallback(const sensor_msgs::PointCloud2::Con
 	publishAll(cloud->header.stamp);	
 }
 
-void OctomapServer::insertCloud(const tf::Point& sensorOriginTf, const PCLPointCloud& pc){
+void OctomapServer::insertCloud(const tf::Point& sensorOriginTf, const PCLPointCloud& pc, bool occupied){
 
 	point3d sensorOrigin = pointTfToOctomap(sensorOriginTf);
 
@@ -354,7 +381,7 @@ void OctomapServer::insertCloud(const tf::Point& sensorOriginTf, const PCLPointC
 
 	// now mark all occupied cells:
 	for (KeySet::iterator it = occupied_cells.begin(), end=occupied_cells.end(); it!= end; it++) {
-		m_octree->updateNode(*it, true);
+		m_octree->updateNode(*it, occupied);
 	}
 	
 	if (m_compressMap) m_octree->prune();

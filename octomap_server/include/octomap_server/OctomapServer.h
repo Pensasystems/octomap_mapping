@@ -105,7 +105,8 @@ public:
   bool searchNodeSrv(SearchNodeSrv::Request& req, SearchNodeSrv::Response& rsp);
   bool dilateMapSrv(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& rsp);
   bool getDilatedMapSrv(octomap_msgs::GetDilatedMap::Request& req, octomap_msgs::GetDilatedMap::Response& rsp);  
-  
+
+  void extendMapCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud);	
   virtual void insertCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud);
   virtual void insertWholeCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud);
   virtual bool openFile(const std::string& filename);
@@ -146,7 +147,7 @@ protected:
   * @param nonground all other endpoints (clear up to occupied endpoint)
   */
   virtual void insertScan(const tf::Point& sensorOrigin, const PCLPointCloud& ground, const PCLPointCloud& nonground);
-  virtual void insertCloud(const tf::Point& sensorOrigin, const PCLPointCloud& pc);
+  virtual void insertCloud(const tf::Point& sensorOrigin, const PCLPointCloud& pc, bool occupied=true);
 
   /// label the input cloud "pc" into ground and nonground. Should be in the robot's fixed frame (not world!)
   void filterGroundPlane(const PCLPointCloud& pc, PCLPointCloud& ground, PCLPointCloud& nonground) const;
@@ -214,10 +215,11 @@ protected:
   ros::NodeHandle m_nh;
   ros::Publisher  m_markerPub, m_binaryMapPub, m_fullMapPub, m_pointCloudPub, m_collisionObjectPub, m_mapPub, m_cmapPub, m_fmapPub, m_fmarkerPub;
 
-  message_filters::Subscriber<sensor_msgs::PointCloud2> *m_pointCloudSub, *m_wholePointCloudSub;
-  tf::MessageFilter<sensor_msgs::PointCloud2> *m_tfPointCloudSub, *m_tfWholePointCloudSub;
+  message_filters::Subscriber<sensor_msgs::PointCloud2> *m_pointCloudSub, *m_wholePointCloudSub, *m_extendMapSub;
+  tf::MessageFilter<sensor_msgs::PointCloud2> *m_tfPointCloudSub, *m_tfWholePointCloudSub, *m_tfExtendMapSub;
+
   ros::ServiceServer m_octomapBinaryService, m_octomapFullService, m_clearBBXService, m_resetService; 
-	ros::ServiceServer m_castRayService, m_searchNodeService, m_dilateMapService, m_getDilatedMapService;
+  ros::ServiceServer m_castRayService, m_searchNodeService, m_dilateMapService, m_getDilatedMapService;
 
   tf::TransformListener m_tfListener;
   boost::recursive_mutex m_config_mutex;
