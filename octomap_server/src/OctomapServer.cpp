@@ -381,7 +381,10 @@ void OctomapServer::insertCloud(const tf::Point& sensorOriginTf, const PCLPointC
 
 	// now mark all occupied cells:
 	for (KeySet::iterator it = occupied_cells.begin(), end=occupied_cells.end(); it!= end; it++) {
-		m_octree->updateNode(*it, occupied);
+		auto node = m_octree->search(*it);
+		bool setOccupied = NULL != node && occupied;
+		if (NULL != node) setOccupied |= m_octree->isNodeOccupied(node);
+		m_octree->updateNode(*it, setOccupied);
 	}
 	
 	if (m_compressMap) m_octree->prune();
