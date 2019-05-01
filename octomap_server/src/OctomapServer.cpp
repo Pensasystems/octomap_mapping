@@ -199,6 +199,7 @@ OctomapServer::OctomapServer(ros::NodeHandle private_nh_)
   m_searchNodeService = private_nh.advertiseService("search_node", &OctomapServer::searchNodeSrv, this);
   m_dilateMapService = private_nh.advertiseService("dilate_map", &OctomapServer::dilateMapSrv, this);
   m_getDilatedMapService = private_nh.advertiseService("get_dilated_map", &OctomapServer::getDilatedMapSrv, this);
+  m_copyMapService = private_nh.advertiseService("copy_map", &OctomapServer::copyMapService, this);
   
   dynamic_reconfigure::Server<OctomapServerConfig>::CallbackType f;
   f = boost::bind(&OctomapServer::reconfigureCallback, this, _1, _2);
@@ -277,6 +278,39 @@ bool OctomapServer::openFile(const std::string& filename){
 
 }
 
+// Binary only!
+bool OctomapServer::copyMapService(octomap_msgs::SetString::Request& req, octomap_msgs::SetString::Response& rsp){
+	octomap_msgs::OctomapConstPtr mapMsg =
+		ros::topic::waitForMessage<octomap_msgs::Octomap>(req.data, ros::Duration(5));
+
+	if (!mapMsg) return false;
+
+	octomap::AbstractOcTree* tree = octomap_msgs::binaryMsgToMap(*mapMsg);
+	m_octree = dynamic_cast<OcTreeT*>(tree);
+
+	m_treeDepth = m_octree->getTreeDepth();
+	m_maxTreeDepth = m_treeDepth;
+	m_res = m_octree->getResolution();
+	m_gridmap.info.resolution = m_res;
+	double minX, minY, minZ;
+	double maxX, maxY, maxZ;
+	m_octree->getMetricMin(minX, minY, minZ);
+	m_octree->getMetricMax(maxX, maxY, maxZ);
+	
+	m_updateBBXMin[0] = m_octree->coordToKey(minX);
+	m_updateBBXMin[1] = m_octree->coordToKey(minY);
+	m_updateBBXMin[2] = m_octree->coordToKey(minZ);
+	
+	m_updateBBXMax[0] = m_octree->coordToKey(maxX);
+	m_updateBBXMax[1] = m_octree->coordToKey(maxY);
+	m_updateBBXMax[2] = m_octree->coordToKey(maxZ);
+	
+	publishAll();
+
+	rsp.success = true;
+	return true;
+}
+
 void OctomapServer::extendMapCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud){
 
 	PCLPointCloud pc; // input cloud for filtering and ground-detection
@@ -315,7 +349,7 @@ void OctomapServer::insertWholeCloudCallback(const sensor_msgs::PointCloud2::Con
 	
 	Eigen::Matrix4f sensorToWorld;
 	pcl_ros::transformAsMatrix(sensorToWorldTf, sensorToWorld);
-
+	/*
 	// set up filter for height range, also removes NANs:
 	pcl::PassThrough<PCLPoint> pass_x;
 	pass_x.setFilterFieldName("x");
@@ -339,7 +373,7 @@ void OctomapServer::insertWholeCloudCallback(const sensor_msgs::PointCloud2::Con
     pass_y.filter(pc);
     pass_z.setInputCloud(pc.makeShared());
     pass_z.filter(pc);
-
+	*/
 	insertCloud(sensorToWorldTf.getOrigin(), pc);	
 	publishAll(cloud->header.stamp);	
 }

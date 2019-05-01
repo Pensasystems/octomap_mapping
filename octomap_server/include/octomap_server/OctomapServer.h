@@ -70,6 +70,8 @@
 #include <octomap/octomap.h>
 #include <octomap/OcTreeKey.h>
 
+#include <octomap_msgs/SetString.h>
+
 //#define COLOR_OCTOMAP_SERVER // turned off here, turned on identical ColorOctomapServer.h - easier maintenance, only maintain OctomapServer and then copy and paste to ColorOctomapServer and change define. There are prettier ways to do this, but this works for now
 
 #ifdef COLOR_OCTOMAP_SERVER
@@ -105,7 +107,8 @@ public:
   bool searchNodeSrv(SearchNodeSrv::Request& req, SearchNodeSrv::Response& rsp);
   bool dilateMapSrv(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& rsp);
   bool getDilatedMapSrv(octomap_msgs::GetDilatedMap::Request& req, octomap_msgs::GetDilatedMap::Response& rsp);  
-
+  bool copyMapService(octomap_msgs::SetString::Request& req, octomap_msgs::SetString::Response& rsp);
+	
   void extendMapCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud);	
   virtual void insertCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud);
   virtual void insertWholeCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud);
@@ -220,7 +223,8 @@ protected:
 
   ros::ServiceServer m_octomapBinaryService, m_octomapFullService, m_clearBBXService, m_resetService; 
   ros::ServiceServer m_castRayService, m_searchNodeService, m_dilateMapService, m_getDilatedMapService;
-
+  ros::ServiceServer m_copyMapService;
+	
   tf::TransformListener m_tfListener;
   boost::recursive_mutex m_config_mutex;
   dynamic_reconfigure::Server<OctomapServerConfig> m_reconfigureServer;
